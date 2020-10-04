@@ -9,9 +9,10 @@ def readme():
 
 setup(
     name='python-dali',
-    version='0.6',
+    version='0.7.1',
     description='Interface to DALI lighting systems',
     long_description=readme(),
+    long_description_content_type='text/x-rst',
     author='Stephen Early',
     author_email='steve@assorted.org.uk',
     url='https://github.com/sde1000/python-dali',
@@ -19,8 +20,12 @@ setup(
         'dali',
         'dali.device',
         'dali.driver',
-        'dali.gear'
+        'dali.gear',
+        'dali.tests',
     ],
+    extras_require={
+        "driver-unipi": ["pyusb", "pymodbus"],
+    },
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
@@ -30,7 +35,4 @@ setup(
     ],
     license='LGPL3+',
     keywords='lighting DALI development',
-    test_suite='dali.tests',
-    install_requires=['pyusb', 'pymodbus'],
-    tests_require=['mock'],
 )

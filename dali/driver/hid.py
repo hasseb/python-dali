@@ -11,6 +11,8 @@ import logging
 import random
 import glob
 from dali.exceptions import UnsupportedFrameTypeError, CommunicationError
+from dali.sequences import sleep as seq_sleep
+from dali.sequences import progress as seq_progress
 import dali.frame
 
 # dali.command and dali.gear are required for the bus traffic callback
@@ -193,8 +195,8 @@ class hid:
             command_sent = False
             while not command_sent:
                 try:
-                    if command._devicetype != 0:
-                        await self._send_raw(EnableDeviceType(command._devicetype))
+                    if command.devicetype != 0:
+                        await self._send_raw(EnableDeviceType(command.devicetype))
                     response = await self._send_raw(command)
                     command_sent = True
                 except CommunicationError:
@@ -205,8 +207,32 @@ class hid:
             if not in_transaction:
                 self.transaction_lock.release()
 
-    def _initialise_device(self):
+    async def run_sequence(self, seq, progress=None):
+        """Run a command sequence as a transaction
+        """
+        await self.transaction_lock.acquire()
+        response = None
+        try:
+            while True:
+                try:
+                    cmd = seq.send(response)
+                except StopIteration as r:
+                    return r.value
+                response = None
+                if isinstance(cmd, seq_sleep):
+                    await asyncio.sleep(cmd.delay)
+                elif isinstance(cmd, seq_progress):
+                    if progress:
+                        progress(cmd)
+                else:
+                    if cmd.devicetype != 0:
+                        await self._send_raw(EnableDeviceType(cmd.devicetype))
+                    response = await self._send_raw(cmd)
+        finally:
+            self.transaction_lock.release()
+            seq.close()
 
+    def _initialise_device(self):
         """Send any device-specific initialisation commands
         """
         # Some devices may need to send initialisation commands and await
@@ -325,7 +351,7 @@ class tridonic(hid):
             assert seq not in self._outstanding
             self._outstanding[seq] = (event, messages)
             data = self._cmd(self._CMD_SEND, seq,
-                             flags=self._SEND_FLAGS_SENDTWICE if command.is_config else 0,
+                             flags=self._SEND_FLAGS_SENDTWICE if command.sendtwice else 0,
                              ftype=self._SEND_FRAMESIZE_16, frame=frame.pack_len(3))
             try:
                 os.write(self._f, data)
@@ -336,7 +362,7 @@ class tridonic(hid):
                 self.disconnect(reconnect=True)
                 raise CommunicationError
 
-            outstanding_transmissions = 2 if command.is_config else 1
+            outstanding_transmissions = 2 if command.sendtwice else 1
             response = None
             while outstanding_transmissions or response is None:
                 if len(messages) == 0:
@@ -363,11 +389,11 @@ class tridonic(hid):
                 elif rtype == self._RESPONSE_NO_FRAME:
                     response = "no"
             del self._outstanding[seq], event, messages
-            if command._response:
+            if command.response:
                 # Construct response and return it
                 if response == "no":
-                    return command._response(None)
-                return command._response(response)
+                    return command.response(None)
+                return command.response(response)
 
     async def _bus_watch(self):
         # Why is this a task, and not just run from _handle_read()?
@@ -423,11 +449,11 @@ class tridonic(hid):
                 # current_command will be a config command or a
                 # command that expects a response.  It cannot be
                 # EnableDeviceType()
-                if current_command.is_config:
-                    # We are waiting for a repeat of the config command
+                if current_command.sendtwice:
+                    # We are waiting for a repeat of the command
                     if timeout:
-                        # We didn't get it: report a failed config command
-                        self._log.debug("Failed config command: %s", current_command)
+                        # We didn't get it: report a failed command
+                        self._log.debug("Failed sendtwice command: %s", current_command)
                         self.bus_traffic._invoke(current_command, None, True)
                         current_command = None
                         continue
@@ -485,7 +511,7 @@ class tridonic(hid):
             elif isinstance(frame, dali.frame.ForwardFrame):
                 command = dali.command.from_frame(frame, devicetype=devicetype)
                 devicetype = 0
-                if command.is_config or command.response:
+                if command.sendtwice or command.response:
                     # We need more information.  Stash the command and wait.
                     current_command = command
                 else:
@@ -592,7 +618,7 @@ class hasseb(hid):
             raise UnsupportedFrameTypeError
         await self.connected.wait()
         async with self._command_lock:
-            times = 2 if command.is_config else 1
+            times = 2 if command.sendtwice else 1
             for rep in range(times):
                 os.write(self._f, frame.pack_len(2))
             # Earlier commands may have left a response available that

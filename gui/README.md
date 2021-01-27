@@ -44,15 +44,19 @@ To get python-dali working in Windows 10, you need to have Python 3.7 or newer i
 git clone https://github.com/hasseb/python-dali.git  
 cd python-dali/  
 python setup.py install  
+"Add Python/Scripts to Path"  
 pip install PyQt5  
 pip install pyusb  
-pip install hidapi
+pip install hidapi  
 
 cd ..
 
 To install pyhidapi:  
 git clone https://github.com/awelkie/pyhidapi.git  
 cd pyhidapi  
-sudo python3 setup.py install  
+python setup.py install
 
-To build the Windows installer package, you need to have NSIS installed in your Program Files folder.
+To install pyinstaller:
+python -m pip install pyinstaller  
+
+To build the Windows installer package, you need to have NSIS installed in your Program Files folder. You need to have EnVar plug-in as well.

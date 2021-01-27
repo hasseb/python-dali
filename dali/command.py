@@ -58,7 +58,8 @@ class Response:
     @property
     def value(self):
         if self._value is None and self._expected:
-            raise MissingResponse()
+            print("No response")
+            #raise MissingResponse()
         if self._value and self._value.error and not self._error_acceptable:
             print(ResponseError())
             #raise ResponseError()

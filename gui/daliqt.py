@@ -3,6 +3,7 @@
 from PyQt5 import QtGui
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
+from PyQt5.QtWidgets import QApplication
 
 import hasseb
 from dali import address
@@ -11,6 +12,7 @@ import bus
 
 # Create hasseb USB DALI driver instance to handle messages
 DALI_device = hasseb.AsyncHassebDALIUSBDriver()
+DALI_device.setEventHandler(QApplication.processEvents)
 # Create DALI bus
 DALI_bus = bus.Bus('hasseb DALI bus',   DALI_device)
 # Instance to send individual DALI commands
@@ -268,8 +270,10 @@ class tabsWidget(QWidget):
         while dali_message_received.count(float('inf')) != DALI_BUFFER_LENGTH:
             index = dali_message_received.index(min(dali_message_received))
             if dali_message_type[index] == MESSAGE_TYPE_DALI_PC:
-                if dali_rec_buffer[index][3] == 0x05 or dali_rec_buffer[index][3] == 0x06:
+                if dali_rec_buffer[index][3] == 0x05:
                     text = '|| SNIF |'
+                elif dali_rec_buffer[index][3] == 0x06:
+                    text = '|| SNIF ERROR |'
                 else:
                     text = '|| DALI -> PC |'
                 for i in range(5,(5+dali_rec_buffer[index][4])):
@@ -347,7 +351,10 @@ class tabsWidget(QWidget):
     @pyqtSlot()
     def scanButtonClick(self):
         self.tab1.treeWidget.clear()
-        DALI_bus.assign_short_addresses()
+        try:
+            DALI_bus.assign_short_addresses()
+        except Exception as err:
+            print(str(err))
         self.updateDeviceList()
 
 
@@ -359,7 +366,7 @@ class tabsWidget(QWidget):
 
     @pyqtSlot()
     def sniffDisableButtonClick(self):
-        DALI_device.enableSniffing()
+        DALI_device.disableSniffing()
         self.parent.statusBar().showMessage("Sniffing disabled")
 
 

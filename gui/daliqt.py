@@ -5,6 +5,8 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import QApplication
 
+
+import time
 import hasseb
 from dali import address
 import DALICommands
@@ -26,6 +28,7 @@ dali_message_type = [None for i in range(DALI_BUFFER_LENGTH)]
 dali_rec_buffer_write_idx = 0
 MESSAGE_TYPE_DALI_PC = 0
 MESSAGE_TYPE_PC_DALI = 1
+start_time = time.monotonic()
 
 class DALIThread(QRunnable):
     '''
@@ -75,7 +78,7 @@ class mainWindow(QMainWindow):
 
     def __init__(self, app):
         super(mainWindow, self).__init__()
-        self.title = 'DALI2Controller 1.2'
+        self.title = 'DALI2Controller 1.3'
         screen_resolution = app.desktop().screenGeometry()
         self.width, self.height = screen_resolution.width()/2, screen_resolution.height()/2
         self.left = screen_resolution.width()/2-self.width/2
@@ -267,15 +270,17 @@ class tabsWidget(QWidget):
         global dali_message_type
         global dali_message_received
         global response_expected
+        global start_time
         while dali_message_received.count(float('inf')) != DALI_BUFFER_LENGTH:
             index = dali_message_received.index(min(dali_message_received))
+            text = '[' + "{:.3f}".format(time.monotonic() - start_time) + '] '
             if dali_message_type[index] == MESSAGE_TYPE_DALI_PC:
                 if dali_rec_buffer[index][3] == 0x05:
-                    text = '|| SNIF |'
+                    text += 'SNIF |'
                 elif dali_rec_buffer[index][3] == 0x06:
-                    text = '|| SNIF ERROR |'
+                    text += 'SNIF ERROR |'
                 else:
-                    text = '|| DALI -> PC |'
+                    text += 'DALI -> PC |'
                 for i in range(5,(5+dali_rec_buffer[index][4])):
                     text += '| ' + "0x{:02x}".format(dali_rec_buffer[index][i]) + ' '
                 text += '|| '
@@ -285,7 +290,7 @@ class tabsWidget(QWidget):
                     self.tab1.responseByte.setText(f"{dali_rec_buffer[index][4]}")
                     self.tab1.responseCommand.setText(f"{DALI_device.extract(dali_rec_buffer[index])}")
             elif dali_message_type[index] == MESSAGE_TYPE_PC_DALI:
-                text = '|| PC -> DALI ||'
+                text += 'PC -> DALI ||'
                 for data in dali_rec_buffer[index]:
                     text += " 0x{:02x}".format(data) + ' |'
                 text += '|'

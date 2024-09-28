@@ -84,7 +84,7 @@ class mainWindow(QMainWindow):
         self.left = screen_resolution.width()/2-self.width/2
         self.top = screen_resolution.height()/2-self.height/2
         self.setWindowTitle(self.title)
-        self.setGeometry(self.left, self.top, self.width, self.height)
+        self.setGeometry(int(self.left), int(self.top), int(self.width), int(self.height))
         self.tabs_widget = tabsWidget(self)
         self.setCentralWidget(self.tabs_widget)
 

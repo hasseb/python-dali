@@ -1,10 +1,7 @@
 import unittest
-
-import dali
 from dali import address
 from dali import command
 from dali import frame
-from dali.device import general as generaldevice
 from dali.gear import general as generalgear
 
 
@@ -14,12 +11,12 @@ def _test_pattern():
         yield 16, d, 0
     # Control gear, device type non-zero, application extended commands only
     for dt in command.Command._supported_devicetypes:
-        for a in range (1, 0x100, 2):
-            for b in range (0xe0, 0x100):
+        for a in range(1, 0x100, 2):
+            for b in range(0xe0, 0x100):
                 yield 16, (a, b), dt
     # Control devices, device commands only
-    for a in range (0, 0x100):
-        for b in range (0, 0x100):
+    for a in range(0, 0x100):
+        for b in range(0, 0x100):
             yield 24, (a, 0xfe, b), 0
     # Control devices, instance commands addressed to broadcast device addr
     for d in range(0, 0x10000):
@@ -29,6 +26,15 @@ def _test_pattern():
         yield 24, (0xc1, c, 0x00), 0
     for c in (0xc5, 0xc7, 0xc9):
         yield 24, (c, 0x00, 0x00), 0
+    # Control devices, event messages for push buttons (part 301)
+    for e in (0, 1, 2, 5, 9, 11, 12, 14, 15):
+        yield 24, (0xc2, 0x04, e), 0
+    # Control devices, QueryEventFilter
+    for o in (0x90, 0x91, 0x92):
+        yield 24, (0x03, 0x00, o), 0
+    # Control devices, events for occupancy sensors (part 303)
+    for e in range(16):
+        yield 24, (0x86, 0xFC, e), 0
 
 
 class TestCommands(unittest.TestCase):
@@ -42,9 +48,13 @@ class TestCommands(unittest.TestCase):
         """all command classes are covered by test pattern"""
         seen = {}
         for fs, d, dt in _test_pattern():
-            c = command.from_frame(frame.ForwardFrame(fs, d), devicetype=dt)
+            c = command.from_frame(
+                frame.ForwardFrame(fs, d), devicetype=dt)
             seen[c.__class__] = True
         for cls in command.Command._commands:
+            if cls.__name__ == "UnknownEvent":
+                # UnknownEvent shouldn't come up, so don't expect to see it
+                continue
             self.assertTrue(
                 cls in seen,
                 'class {} not covered by tests'.format(cls.__name__)
@@ -64,7 +74,7 @@ class TestCommands(unittest.TestCase):
             self.assertHasAttr(cls, "uses_dtr2")
             self.assertIsInstance(cls.uses_dtr2, bool)
             self.assertHasAttr(cls, "response")
-            if cls.response != None:
+            if cls.response is not None:
                 self.assertIsInstance(cls.response(None), command.Response)
             self.assertHasAttr(cls, "sendtwice")
             self.assertIsInstance(cls.sendtwice, bool)

@@ -66,7 +66,7 @@ oldversion=$(dpkg-parsechangelog -l${pkgdir}/debian/changelog | grep Version: | 
 echo "Previous version: ${oldversion}"
 
 if [ "${oldversion}" = "${newversion}" ]; then
-  echo Versions are the same!  Have you forgotten to update setup.py?
+  echo Versions are the same!  Have you forgotten to update setup.cfg?
   echo If you are rebuilding the current release, use the -r option
   exit 1
 fi
@@ -82,10 +82,10 @@ echo -e "\n -- $(git config --get user.name) <$(git config --get user.email)>  $
 cat ${pkgdir}/debian/changelog.old >>${pkgdir}/debian/changelog
 rm ${pkgdir}/debian/changelog.old
 
-# Copy the working tree setup.py into the temporary tree - it has
+# Copy the working tree setup.cfg into the temporary tree - it has
 # the version number that we want to use for the generated package.
 
-cp setup.py ${pkgdir}/setup.py
+cp setup.cfg ${pkgdir}/setup.cfg
 
 # Build the Debian package files
 
@@ -104,7 +104,7 @@ cat <<EOF
 
 You can commit this release by pasting the following commands:
 
-git add setup.py debian/changelog
+git add setup.cfg debian/changelog
 git commit -m "${packagename} ${newversion}"
 git tag -a -m "Version ${newversion}" v${newversion}
 

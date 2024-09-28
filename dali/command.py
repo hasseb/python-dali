@@ -1,10 +1,10 @@
 """Declaration of base types for dali commands and their responses."""
 
+from enum import IntEnum
 from dali import address
 from dali import frame
 from dali.exceptions import MissingResponse
 from dali.exceptions import ResponseError
-import warnings
 
 
 class _CommandTracker(type):
@@ -71,6 +71,7 @@ class Response:
         except MissingResponse or ResponseError as e:
             return "{}".format(e)
 
+
 class NumericResponse(Response):
     _expected = True
 
@@ -82,6 +83,7 @@ class NumericResponse(Response):
             return "(framing error)"
         return self._value.as_integer
 
+
 class NumericResponseMask(NumericResponse):
     @property
     def value(self):
@@ -89,6 +91,7 @@ class NumericResponseMask(NumericResponse):
         if v == 255:
             return "MASK"
         return v
+
 
 class YesNoResponse(Response):
     _error_acceptable = True
@@ -158,6 +161,21 @@ class BitmapResponse(Response, metaclass=BitmapResponseBitDict):
             return "{}".format(e)
 
 
+class EnumResponse(Response):
+    """
+    A response that consists of a number from a pre-defined enumerator
+    """
+
+    enumerator: IntEnum = None
+
+    @property
+    def value(self):
+        _value = super().value
+        if _value:
+            return self.enumerator(_value.as_integer)  # noqa
+        return _value
+
+
 class Command(metaclass=_CommandTracker):
     """A command frame.
 
@@ -190,17 +208,11 @@ class Command(metaclass=_CommandTracker):
     # foo.  This parameter is ignored for all other frame lengths.
     devicetype = 0
 
-    # devicetype used to be called "_devicetype".  This property is
-    # here for compatibility with older code that relied on this.  It
-    # will be removed in a future release.
-    @property
-    def _devicetype(self):
-        warnings.warn("'_devicetype' has been renamed to 'devicetype'",
-                      DeprecationWarning, stacklevel=2)
-        return self.devicetype
-
     def __init__(self, f):
-        assert isinstance(f, frame.ForwardFrame)
+        if not isinstance(f, frame.ForwardFrame):
+            raise TypeError(
+                f"{self.__class__.__name__} expected a ForwardFrame, not a {type(f)}"
+            )
         self._data = f
 
     _framesizes = {}
@@ -211,7 +223,7 @@ class Command(metaclass=_CommandTracker):
         subs.append(subclass)
 
     @classmethod
-    def from_frame(cls, f, devicetype=0):
+    def from_frame(cls, f, devicetype=0, dev_inst_map=None):
         """Return a Command instance corresponding to the supplied frame.
 
         If the device type the command is intended for is known
@@ -220,6 +232,8 @@ class Command(metaclass=_CommandTracker):
 
         :parameter frame: a forward frame
         :parameter devicetype: type of device frame is intended for
+        :param dev_inst_map: An instance of DeviceInstanceTypeMapper to
+        assist with DALI events
 
         :returns: Return a Command instance corresponding to the
         frame.  Returns None if there is no match.
@@ -231,7 +245,7 @@ class Command(metaclass=_CommandTracker):
         subs = cls._framesizes.get(len(f), [])
 
         for c in subs:
-            r = c.from_frame(f, devicetype=devicetype)
+            r = c.from_frame(f, devicetype=devicetype, dev_inst_map=dev_inst_map)
             if r:
                 return r
 
@@ -244,32 +258,9 @@ class Command(metaclass=_CommandTracker):
         return self._data
 
     @property
-    def is_config(self):
-        """Is this a configuration command?  (Does it need repeating to
-        take effect?)
-
-        Use of this property is deprecated: access the "sendtwice"
-        attribute directly.
-        """
-        warnings.warn("Access 'sendtwice' directly instead of using 'is_config'",
-                      DeprecationWarning, stacklevel=2)
-        return self.sendtwice
-
-    @property
     def is_query(self):
         """Does this command return a result?"""
         return self.response is not None
-
-    @property
-    def _response(self):
-        """If this command returns a result, use this class for the response.
-
-        This property is provided for compatibility with old code.
-        Access the "response" attribute directly.
-        """
-        warnings.warn("Access 'response' directly instead of using '_response'",
-                      DeprecationWarning, stacklevel=2)
-        return self.response
 
     @staticmethod
     def _check_destination(destination):
@@ -293,5 +284,6 @@ class Command(metaclass=_CommandTracker):
         joined = ":".join(
             "{:02x}".format(c) for c in self._data.as_byte_sequence)
         return "({0}){1}".format(type(self), joined)
+
 
 from_frame = Command.from_frame

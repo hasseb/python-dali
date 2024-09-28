@@ -22,23 +22,28 @@ class _GearCommand(command.Command):
         cls._gearcommands.append(subclass)
 
     @classmethod
-    def from_frame(cls, f, devicetype=0):
+    def from_frame(cls, f, devicetype=0, dev_inst_map=None):
         for gc in cls._gearcommands:
-            r = gc.from_frame(f, devicetype=devicetype)
+            r = gc.from_frame(
+                f, devicetype=devicetype, dev_inst_map=dev_inst_map
+            )
             if r:
                 return r
         return UnknownGearCommand(f)
+
 
 class UnknownGearCommand(_GearCommand):
     """An unknown command addressed to control gear.
     """
     @classmethod
-    def from_frame(cls, f, devicetype=0):
+    def from_frame(cls, f, devicetype=0, dev_inst_map=None):
         return
+
 
 ###############################################################################
 # Commands from Table 15 start here
 ###############################################################################
+
 
 class _StandardCommand(_GearCommand):
     """A standard command as defined in Table 15 of IEC 62386-102
@@ -104,22 +109,22 @@ class _StandardCommand(_GearCommand):
             cls._opcodes[(subclass.devicetype, subclass._cmdval)] = subclass
 
     @classmethod
-    def from_frame(cls, frame, devicetype=0):
-        if not frame[8]:
+    def from_frame(cls, f, devicetype=0, dev_inst_map=None):
+        if not f[8]:
             # It's a direct arc power control command
             return
 
-        addr = address.from_frame(frame)
+        addr = address.from_frame(f)
 
         if addr is None:
             # It's probably a _SpecialCommand
             return
 
-        opcode = frame[7:0]
+        opcode = f[7:0]
 
         cc = cls._opcodes.get((devicetype, opcode))
         if not cc:
-            return UnknownGearCommand(frame)
+            return UnknownGearCommand(f)
 
         if cc._hasparam:
             return cc(addr, opcode & 0x0f)
@@ -171,7 +176,7 @@ class DAPC(_GearCommand):
         super().__init__(f)
 
     @classmethod
-    def from_frame(cls, f, devicetype=0):
+    def from_frame(cls, f, devicetype=0, dev_inst_map=None):
         if f[8]:
             return
         addr = address.from_frame(f)
@@ -559,6 +564,16 @@ class EnableWriteMemory(_StandardCommand):
     NB there is no command to explicitly disable memory write access;
     any command that is not directly involved with writing to memory
     banks will set writeEnableState to DISABLED.
+
+    The commands that do not set writeEnableState to DISABLED are:
+     - WriteMemoryLocation
+     - WriteMemoryLocationNoReply
+     - DTR0
+     - DTR1
+     - DTR2
+     - QueryContentDTR0
+     - QueryContentDTR1
+     - QueryContentDTR2
     """
     _cmdval = 0x81
     sendtwice = True
@@ -641,9 +656,10 @@ class QueryVersionNumber(_StandardCommand):
     """Ask for the version number of the IEC standard document met by the
     software and hardware of the ballast.  The high four bits of the
     answer represent the version number of the standard.  IEC-60929 is
-    version number 0.
+    version number 0; the 2009 version of IEC-62386 is version number 1.
 
-    The answer shall be the content of memory bank 0 location 0x16.
+    As of the 2014 version of IEC-62386, the answer shall be the
+    content of memory bank 0 location 0x16.
     """
     _cmdval = 0x97
     response = command.NumericResponse
@@ -664,6 +680,8 @@ class QueryDeviceTypeResponse(command.Response):
               4: "Incandescent lamp dimmer",
               5: "DC-controlled dimmer",
               6: "LED lamp",
+              7: "Switching function",
+              8: "Colour control",
               254: "None / end",
               255: "Multiple"}
 
@@ -684,6 +702,8 @@ class QueryDeviceType(_StandardCommand):
     4: incandescent lamps
     5: DC-controlled dimmers
     6: LED lamps
+    7: Switching function
+    8: Colour control
 
     The device type affects which application extended commands the
     device will respond to.
@@ -960,6 +980,7 @@ class QueryExtendedVersionNumberMixin:
     _cmdval = 0xff
     response = command.NumericResponse
 
+
 class QueryExtendedVersionNumber(QueryExtendedVersionNumberMixin,
                                  _StandardCommand):
     """Query Extended Version Number
@@ -968,9 +989,11 @@ class QueryExtendedVersionNumber(QueryExtendedVersionNumberMixin,
     """
     pass
 
+
 ###############################################################################
 # Commands from Table 16 start here
 ###############################################################################
+
 
 class _SpecialCommand(_GearCommand):
     """A special command as defined in Table 16 of IEC 62386-102.
@@ -1000,7 +1023,7 @@ class _SpecialCommand(_GearCommand):
         self.param = param
         super().__init__(frame.ForwardFrame(16, (self._cmdval, self.param)))
 
-    # dict of frame[15:8] to cls
+    # dict of f[15:8] to cls
     _opcodes = {}
 
     @classmethod
@@ -1010,20 +1033,20 @@ class _SpecialCommand(_GearCommand):
         cls._opcodes[subclass._cmdval] = subclass
 
     @classmethod
-    def from_frame(cls, frame, devicetype=0):
-        opcode = frame[15:8]
+    def from_frame(cls, f, devicetype=0, dev_inst_map=None):
+        opcode = f[15:8]
         if opcode == cls._cmdval:
             if cls._hasparam:
-                return cls(frame[7:0])
-            elif frame[7:0] == 0:
+                return cls(f[7:0])
+            elif f[7:0] == 0:
                 return cls()
             else:
-                return UnknownGearCommand(frame)
+                return UnknownGearCommand(f)
 
         cc = cls._opcodes.get(opcode)
         if not cc:
-            return UnknownGearCommand(frame)
-        return cc.from_frame(frame, devicetype=devicetype)
+            return UnknownGearCommand(f)
+        return cc.from_frame(f, devicetype=devicetype)
 
     def __str__(self):
         if self._hasparam:
@@ -1048,14 +1071,14 @@ class _ShortAddrSpecialCommand(_SpecialCommand):
         super().__init__(data)
 
     @classmethod
-    def from_frame(cls, frame, devicetype=0):
+    def from_frame(cls, f, devicetype=0, dev_inst_map=None):
         if cls == _ShortAddrSpecialCommand:
             return
-        if frame[15:8] == cls._cmdval:
-            if frame[7:0] == 0xff:
+        if f[15:8] == cls._cmdval:
+            if f[7:0] == 0xff:
                 return cls("MASK")
-            if frame[7] is False and frame[0] is True:
-                return cls(frame[6:1])
+            if f[7] is False and f[0] is True:
+                return cls(f[6:1])
 
     def __str__(self):
         return "{}({})".format(self.__class__.__name__, self.address)
@@ -1113,7 +1136,7 @@ class Initialise(_SpecialCommand):
         super().__init__(b)
 
     @classmethod
-    def from_frame(cls, f, devicetype=0):
+    def from_frame(cls, f, devicetype=0, dev_inst_map=None):
         if f[15:8] == cls._cmdval:
             if f[7:0] == 0:
                 return cls(broadcast=True)
@@ -1171,6 +1194,7 @@ class SearchaddrH(_SpecialCommand):
     _cmdval = 0xb1
     _hasparam = True
 
+
 SetSearchAddrH = SearchaddrH
 
 
@@ -1179,6 +1203,7 @@ class SearchaddrM(_SpecialCommand):
     _cmdval = 0xb3
     _hasparam = True
 
+
 SetSearchAddrM = SearchaddrM
 
 
@@ -1186,6 +1211,7 @@ class SearchaddrL(_SpecialCommand):
     """Set the low 8 bits of the search address."""
     _cmdval = 0xb5
     _hasparam = True
+
 
 SetSearchAddrL = SearchaddrL
 

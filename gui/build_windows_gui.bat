@@ -3,8 +3,8 @@ rmdir /q/s build
 rmdir /q/s dist
 del install.exe
 
-pyinstaller --add-binary hidapi.dll;. dali_gui.py
-pyinstaller --add-binary hidapi.dll;. --add-binary hasseb_icon.ico;. --icon hasseb_icon.ico -F --noconsole dali_gui.py
+pyinstaller dali_gui.spec
+
 copy hidapi.dll dist\
 copy hidapi.dll dist\dali_gui
 copy hasseb_icon.ico dist\

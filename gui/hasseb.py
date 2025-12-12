@@ -14,12 +14,12 @@ import time
 
 import hid
 
-HASSEB_USB_VENDOR = 0x04cc
-HASSEB_USB_PRODUCT = 0x0802
+HASSEB_USB_VENDOR = 1228
+HASSEB_USB_PRODUCT = 2050
 
 HASSEB_READ_FIRMWARE_VERSION    = 0x02
 HASSEB_CONFIGURE_DEVICE         = 0x05
-HASSEB_DALI_FRAME               = 0X07
+HASSEB_DALI_FRAME               = 0x07
 
 HASSEB_DRIVER_NO_DATA_AVAILABLE = 0
 HASSEB_DRIVER_NO_ANSWER = 1
@@ -80,7 +80,12 @@ class HassebDALIUSBDriver(DALIDriver):
             self.device = hid.Device(HASSEB_USB_VENDOR, HASSEB_USB_PRODUCT)
             self.device_found = 1
         except:
-            self.device_found = None
+            try:
+                self.device = hid.device()
+                self.device.open(HASSEB_USB_VENDOR, HASSEB_USB_PRODUCT)
+                self.device_found = 1
+            except:
+                self.device_found = None
 
     def wait_for_response(self):
         raise NotImplementedError()
@@ -181,8 +186,7 @@ class HassebDALIUSBDriver(DALIDriver):
             self.sn = 1
         data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_READ_FIRMWARE_VERSION,
                             self.sn, 0, 0, 0, 0, 0, 0, 0)
-        #self.device.write(data)
-        hid.Device(HASSEB_USB_VENDOR, HASSEB_USB_PRODUCT).write(data)
+        self.device.write(data)
         data = self.device.read(10)
         for i in range(0,100):
             if len(data)==10:
@@ -409,7 +413,7 @@ class Bus(object):
                     group1 = group1.value.as_integer
                     group2 = group2.value.as_integer
                 except:
-                    self._devices[sa].group = None
+                    self._devices[sa].groups = None
                 else:
                     self._devices[sa].groups = self.parse_groups(group1, group2)
 
@@ -447,6 +451,7 @@ class Bus(object):
             groups += "14, "
         if (group2 & 1 << 7) != 0:
             groups += "15, "
-        groups = groups[:-2]
+        if groups:
+            groups = groups[:-2]
 
         return groups

@@ -5,7 +5,6 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import QApplication
 
-
 import time
 import hasseb
 from dali import address
@@ -16,7 +15,7 @@ import bus
 DALI_device = hasseb.AsyncHassebDALIUSBDriver()
 DALI_device.setEventHandler(QApplication.processEvents)
 # Create DALI bus
-DALI_bus = bus.Bus('hasseb DALI bus',   DALI_device)
+DALI_bus = bus.Bus('hasseb DALI bus', DALI_device)
 # Instance to send individual DALI commands
 DALI_command_sender = DALICommands.DALICommandSender(DALI_device)
 
@@ -57,7 +56,7 @@ class DALIThread(QRunnable):
                     dali_rec_buffer_write_idx += 1
                 else:
                     dali_rec_buffer_write_idx = 0
-                self.signal.emit()
+                self.signal.emit()                
             data = DALI_device.send_message
             if data is not None:
                 dali_rec_buffer[dali_rec_buffer_write_idx] = data
@@ -70,7 +69,6 @@ class DALIThread(QRunnable):
                     dali_rec_buffer_write_idx = 0
                 self.signal.emit()
                 DALI_device.send_message = None
-
 
 class mainWindow(QMainWindow):
     # Signal handling received DALI messages, receiving made in separate thread

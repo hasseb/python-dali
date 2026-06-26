@@ -173,7 +173,7 @@ class HassebDALIUSBDriver(DALIDriver):
         return None
 
     def send(self, command):
-        time.sleep(0.02)    # a delay between sent messages need to be at lest 22*417 µs
+        time.sleep(0.015)    # a delay between sent messages need to be at lest 22*417 µs
         self._response_message = None
         data = self.construct(command)
         self.send_message = struct.pack('BB', data[7], data[8])

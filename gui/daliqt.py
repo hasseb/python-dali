@@ -133,6 +133,21 @@ class tabsWidget(QWidget):
         self.tab1.layout_sendCommandsBottomRight = QHBoxLayout()
 
         # Widgets and actions
+        # Connection group box
+        self.tab1.connectionGroupBox = QGroupBox('Connection')
+        self.tab1.layout_connectionGroupBox = QVBoxLayout()
+        self.tab1.connectionUSB = QRadioButton('USB')
+        self.tab1.connectionUSB.setChecked(True)
+        self.tab1.connectionIP = QRadioButton('IP')
+        self.tab1.ipAddress = QLineEdit()
+        self.tab1.ipAddress.setPlaceholderText('IP address')
+        self.tab1.connectionSetButton = QPushButton('Set')
+        self.tab1.connectionSetButton.clicked.connect(self.connectionSetButtonClick)
+        self.tab1.layout_connectionGroupBox.addWidget(self.tab1.connectionUSB)
+        self.tab1.layout_connectionGroupBox.addWidget(self.tab1.connectionIP)
+        self.tab1.layout_connectionGroupBox.addWidget(self.tab1.ipAddress)
+        self.tab1.layout_connectionGroupBox.addWidget(self.tab1.connectionSetButton)
+        self.tab1.connectionGroupBox.setLayout(self.tab1.layout_connectionGroupBox)
         # Buttons
         self.tab1.initializeButton = QPushButton('Initialize')
         self.tab1.initializeButton.clicked.connect(self.initializeButtonClick)
@@ -142,6 +157,13 @@ class tabsWidget(QWidget):
         self.tab1.sniffEnableButton.clicked.connect(self.sniffEnableButtonClick)
         self.tab1.sniffDisableButton = QPushButton('Disable sniffing')
         self.tab1.sniffDisableButton.clicked.connect(self.sniffDisableButtonClick)
+        # Set maximum width for controls
+        controls_width = 180
+        self.tab1.connectionGroupBox.setMaximumWidth(controls_width)
+        self.tab1.initializeButton.setMaximumWidth(controls_width)
+        self.tab1.scanButton.setMaximumWidth(controls_width)
+        self.tab1.sniffEnableButton.setMaximumWidth(controls_width)
+        self.tab1.sniffDisableButton.setMaximumWidth(controls_width)
         # TreeWidget
         self.tab1.treeWidget = QTreeWidget(self)
         self.tab1.treeWidget.setColumnCount(4)
@@ -184,6 +206,8 @@ class tabsWidget(QWidget):
         self.tab1.responseCommand = QLineEdit()
 
         # Add widgets to layouts
+        # Connection group box
+        self.tab1.layout_controls.addWidget(self.tab1.connectionGroupBox)
         # Buttons
         self.tab1.layout_controls.addWidget(self.tab1.initializeButton)
         self.tab1.layout_controls.addWidget(self.tab1.scanButton)
@@ -222,8 +246,11 @@ class tabsWidget(QWidget):
         self.tab1.layout_sendCommandsBottomLeft.setAlignment(Qt.AlignLeft)
         self.tab1.layout_sendCommands.addLayout(self.tab1.layout_sendCommandsBottom)
         self.tab1.sendCommandGroupBox.setLayout(self.tab1.layout_sendCommands)
+        # Add layouts to tab1 layout
         self.tab1.layout.addLayout(self.tab1.layout_controls)
         self.tab1.layout.addLayout(self.tab1.layout_treeWidget)
+        self.tab1.layout.setStretch(0, 0)
+        self.tab1.layout.setStretch(1, 1)
         self.tab1.layout.setAlignment(Qt.AlignTop)
         self.tab1.setLayout(self.tab1.layout)
 
@@ -251,6 +278,10 @@ class tabsWidget(QWidget):
             self.tab1.addressByte.setRange(0, 255)
             self.tab1.addressByte.setEnabled(True)
         self.updateCommand()
+
+    @pyqtSlot()
+    def connectionSetButtonClick(self):
+        self.parent.statusBar().showMessage(f"IP send clicked for {self.tab1.ipAddress.text()}")
 
     def sendCommandDialog(self):
         sendDlg = QDialog(self)

@@ -14,8 +14,10 @@ import time
 
 import hid
 
-HASSEB_USB_VENDOR = 1228
-HASSEB_USB_PRODUCT = 2050
+NXP_USB_VENDOR = 1228
+ST_USB_VENDOR = 1155
+HASSEB_USB_DALI_PRODUCT = 2050
+HASSEB_ETH_DALI_PRODUCT = 2051
 
 HASSEB_READ_FIRMWARE_VERSION    = 0x02
 HASSEB_CONFIGURE_DEVICE         = 0x05
@@ -77,15 +79,24 @@ class HassebDALIUSBDriver(DALIDriver):
 
     def __init__(self):
         try:
-            self.device = hid.Device(HASSEB_USB_VENDOR, HASSEB_USB_PRODUCT)
+            self.device = hid.Device(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
             self.device_found = 1
         except:
             try:
                 self.device = hid.device()
-                self.device.open(HASSEB_USB_VENDOR, HASSEB_USB_PRODUCT)
+                self.device.open(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
                 self.device_found = 1
             except:
-                self.device_found = None
+                try:
+                    self.device = hid.Device(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
+                    self.device_found = 1
+                except:
+                    try:
+                        self.device = hid.device()
+                        self.device.open(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
+                        self.device_found = 1
+                    except:
+                        self.device_found = None
 
     def wait_for_response(self):
         raise NotImplementedError()

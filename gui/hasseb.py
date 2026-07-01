@@ -1,4 +1,5 @@
 import logging
+import socket
 import struct
 from time import sleep
 
@@ -30,6 +31,10 @@ HASSEB_DRIVER_INVALID_ANSWER = 3
 HASSEB_DRIVER_TOO_EARLY = 4
 HASSEB_DRIVER_SNIFFER_BYTE = 5
 HASSEB_DRIVER_SNIFFER_BYTE_ERROR = 6
+
+HASSEB_DEVICE_NONE = None
+HASSEB_DEVICE_USB = 1
+HASSEB_DEVICE_ETH = 2
 
 
 class HassebDALIUSBNoDataAvailable(object):
@@ -67,36 +72,67 @@ class HassebDALIUSBSnifferByteError(object):
     __str__ = __repr__
 
 
-class HassebDALIUSBDriver(DALIDriver):
+class HassebDALIDriver(DALIDriver):
     """``DALIDriver`` implementation for Hasseb DALI USB device.
     """
-    device_found = None
-    logger = logging.getLogger('HassebDALIUSBDriver')
+    device_found = HASSEB_DEVICE_NONE
+    logger = logging.getLogger('HassebDALIDriver')
     sn = 0
     send_message = None
     _pending = None
     _response_message = None
 
-    def __init__(self):
-        try:
-            self.device = hid.Device(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
-            self.device_found = 1
-        except:
+    # def __init__(self):
+    #     # Try to find an USB device first
+    #     try:
+    #         self.device = hid.Device(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
+    #         self.device_found = HASSEB_DEVICE_USB
+    #     except:
+    #         try:
+    #             self.device = hid.device()
+    #             self.device.open(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
+    #             self.device_found = HASSEB_DEVICE_USB
+    #         except:
+    #             try:
+    #                 self.device = hid.Device(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
+    #                 self.device_found = HASSEB_DEVICE_USB
+    #             except:
+    #                 try:
+    #                     self.device = hid.device()
+    #                     self.device.open(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
+    #                     self.device_found = HASSEB_DEVICE_USB
+    #                 except:
+    #                     self.device_found = HASSEB_DEVICE_NONE
+
+    def connectDevice(self, ip_address=None):
+        # If no IP address is given, try to find an USB device first
+        if ip_address is None:
             try:
-                self.device = hid.device()
-                self.device.open(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
-                self.device_found = 1
+                self.device = hid.Device(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
+                self.device_found = HASSEB_DEVICE_USB
             except:
                 try:
-                    self.device = hid.Device(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
-                    self.device_found = 1
+                    self.device = hid.device()
+                    self.device.open(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
+                    self.device_found = HASSEB_DEVICE_USB
                 except:
                     try:
-                        self.device = hid.device()
-                        self.device.open(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
-                        self.device_found = 1
+                        self.device = hid.Device(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
+                        self.device_found = HASSEB_DEVICE_USB
                     except:
-                        self.device_found = None
+                        try:
+                            self.device = hid.device()
+                            self.device.open(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
+                            self.device_found = HASSEB_DEVICE_USB
+                        except:
+                            self.device_found = HASSEB_DEVICE_NONE
+        # If an IP address is given, try to find an Ethernet device
+        else:
+            # Open TCP connection to the Hasseb DALI Ethernet device
+            self.device = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.device.settimeout(1)
+            self.device.connect((ip_address, 59000))
+            self.device_found = HASSEB_DEVICE_ETH
 
     def wait_for_response(self):
         raise NotImplementedError()
@@ -197,16 +233,16 @@ class HassebDALIUSBDriver(DALIDriver):
             self.sn = 1
         data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_READ_FIRMWARE_VERSION,
                             self.sn, 0, 0, 0, 0, 0, 0, 0)
-        self.device.write(data)
-        data = self.device.read(10)
+        self.sendData(data)
+        data = self.receiveData()
         for i in range(0,100):
             if len(data)==10:
                 if data[1] != HASSEB_READ_FIRMWARE_VERSION:
-                    data = self.device.read(10)
+                    data = self.receiveData()
                 else:
                     return f"{data[3]}.{data[4]}"
             else:
-                data = self.device.read(10)
+                data = self.receiveData()
         return f"VERSION_ERROR"
 
     def enableSniffing(self):
@@ -225,8 +261,20 @@ class HassebDALIUSBDriver(DALIDriver):
                             self.sn, 0, 0, 0, 0, 0, 0, 0)
         self.device.write(data)
 
+    def receiveData(self):
+        if self.device_found == HASSEB_DEVICE_USB:
+            return self.device.read(10)
+        elif self.device_found == HASSEB_DEVICE_ETH:
+            return self.device.receive(10)
 
-class AsyncHassebDALIUSBDriver(HassebDALIUSBDriver, AsyncDALIDriver):
+    def sendData(self, data):
+        if self.device_found == HASSEB_DEVICE_USB:
+            self.device.write(data)
+        elif self.device_found == HASSEB_DEVICE_ETH:
+            self.device.send(data)
+
+
+class AsyncHassebDALIDriver(HassebDALIDriver, AsyncDALIDriver):
     """Asynchronous ``DALIDriver`` implementation for Hasseb DALI USB device.
        Using asynchronous driver requires a separate thread for receiving
        DALI messages. receive() function needs to be called continously
@@ -234,14 +282,11 @@ class AsyncHassebDALIUSBDriver(HassebDALIUSBDriver, AsyncDALIDriver):
        is called when wating for a response to prevent hangin of the program.
     """
 
-    #def __init__(self, processEvents):
-    #    self._processEvents = processEvents
-
     def setEventHandler(self, processEvents):
         self._processEvents = processEvents
 
     def wait_for_response(self):
-        """Wait for response message. Timeout 2000 ms.
+        """Wait for response message. Timeout 200 ms.
         """
         for i in range(200):
             if not self._pending:
@@ -251,12 +296,12 @@ class AsyncHassebDALIUSBDriver(HassebDALIUSBDriver, AsyncDALIDriver):
                 time.sleep(0.001)
 
 
-class SyncHassebDALIUSBDriver(HassebDALIUSBDriver, SyncDALIDriver):
+class SyncHassebDALIUSBDriver(HassebDALIDriver, SyncDALIDriver):
     """Synchronous ``DALIDriver`` implementation for Hasseb DALI USB device.
     """
 
     def wait_for_response(self):
-        """Wait for response message.
+        """Wait for response message. Timeout 200 ms.
         """
         for i in range(200):
             if not self._pending:

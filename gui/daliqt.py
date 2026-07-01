@@ -11,8 +11,8 @@ from dali import address
 import DALICommands
 import bus
 
-# Create hasseb USB DALI driver instance to handle messages
-DALI_device = hasseb.AsyncHassebDALIUSBDriver()
+# Create hasseb DALI driver instance to handle messages
+DALI_device = hasseb.AsyncHassebDALIDriver()
 DALI_device.setEventHandler(QApplication.processEvents)
 # Create DALI bus
 DALI_bus = bus.Bus('hasseb DALI bus', DALI_device)
@@ -76,7 +76,7 @@ class mainWindow(QMainWindow):
 
     def __init__(self, app):
         super(mainWindow, self).__init__()
-        self.title = 'DALI2Controller 1.3'
+        self.title = 'DALI2Controller 1.4'
         screen_resolution = app.desktop().screenGeometry()
         self.width, self.height = screen_resolution.width()/2, screen_resolution.height()/2
         self.left = screen_resolution.width()/2-self.width/2
@@ -141,12 +141,12 @@ class tabsWidget(QWidget):
         self.tab1.connectionIP = QRadioButton('IP')
         self.tab1.ipAddress = QLineEdit()
         self.tab1.ipAddress.setPlaceholderText('IP address')
-        self.tab1.connectionSetButton = QPushButton('Set')
-        self.tab1.connectionSetButton.clicked.connect(self.connectionSetButtonClick)
+        self.tab1.connectButton = QPushButton('Connect')
+        self.tab1.connectButton.clicked.connect(self.connectButtonClick)
         self.tab1.layout_connectionGroupBox.addWidget(self.tab1.connectionUSB)
         self.tab1.layout_connectionGroupBox.addWidget(self.tab1.connectionIP)
         self.tab1.layout_connectionGroupBox.addWidget(self.tab1.ipAddress)
-        self.tab1.layout_connectionGroupBox.addWidget(self.tab1.connectionSetButton)
+        self.tab1.layout_connectionGroupBox.addWidget(self.tab1.connectButton)
         self.tab1.connectionGroupBox.setLayout(self.tab1.layout_connectionGroupBox)
         # Buttons
         self.tab1.initializeButton = QPushButton('Initialize')
@@ -280,8 +280,18 @@ class tabsWidget(QWidget):
         self.updateCommand()
 
     @pyqtSlot()
-    def connectionSetButtonClick(self):
-        self.parent.statusBar().showMessage(f"IP send clicked for {self.tab1.ipAddress.text()}")
+    def connectButtonClick(self):
+        # Connect to the DALI device via USB or IP
+        if self.tab1.connectionUSB.isChecked():
+            DALI_device.connectDevice()
+        elif self.tab1.connectionIP.isChecked():
+            ip_address = self.tab1.ipAddress.text()
+            DALI_device.connectDevice(ip_address)
+
+        # Update status bar message
+        if DALI_device.device_found != None:
+            self.parent.statusBar().showMessage(f"hasseb DALI device with firmware version {DALI_device.readFirmwareVersion()} found.")
+            self.updateDeviceList()
 
     def sendCommandDialog(self):
         sendDlg = QDialog(self)

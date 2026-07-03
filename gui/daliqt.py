@@ -85,18 +85,7 @@ class mainWindow(QMainWindow):
         self.setGeometry(int(self.left), int(self.top), int(self.width), int(self.height))
         self.tabs_widget = tabsWidget(self)
         self.setCentralWidget(self.tabs_widget)
-
-        if DALI_device.device_found != None:
-            self.statusBar().showMessage(f"hasseb USB DALI Master device with firmware version {DALI_device.readFirmwareVersion()} found.")
-            self.updateRecMsg.connect(self.tabs_widget.writeDALILog)
-            self.threadpool = QThreadPool()
-            self.DALIThread = DALIThread(self.updateRecMsg)
-            self.threadpool.start(self.DALIThread)
-        else:
-            self.label = QLabel(self)
-            self.label.setText('<span style="color:red">No USB DALI master device found. Please check the connection and restart program.</span>')
-            self.statusBar().addPermanentWidget(self.label)
-
+        self.statusBar().showMessage(f"No device connected.")
         self.show()
 
 class tabsWidget(QWidget):
@@ -292,6 +281,14 @@ class tabsWidget(QWidget):
         if DALI_device.device_found != None:
             self.parent.statusBar().showMessage(f"hasseb DALI device with firmware version {DALI_device.readFirmwareVersion()} found.")
             self.updateDeviceList()
+            self.parent.updateRecMsg.connect(self.parent.tabs_widget.writeDALILog)
+            self.parent.threadpool = QThreadPool()
+            self.parent.DALIThread = DALIThread(self.parent.updateRecMsg)
+            self.parent.threadpool.start(self.parent.DALIThread)
+        else:
+            self.label = QLabel(self)
+            self.label.setText('<span style="color:red">No USB DALI master device found. Please check the connection and restart program.</span>')
+            self.statusBar().addPermanentWidget(self.label)
 
     def sendCommandDialog(self):
         sendDlg = QDialog(self)

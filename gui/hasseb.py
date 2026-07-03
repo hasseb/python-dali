@@ -3,17 +3,17 @@ import socket
 import struct
 from time import sleep
 
+from dali import address
 from dali.driver.base import AsyncDALIDriver
 from dali.driver.base import DALIDriver
 from dali.driver.base import SyncDALIDriver
 from dali.frame import BackwardFrame
 from dali.frame import BackwardFrameError
-
 import dali.gear.general as gear
 
 import time
-
 import hid
+
 
 NXP_USB_VENDOR = 1228
 ST_USB_VENDOR = 1155
@@ -33,8 +33,9 @@ HASSEB_DRIVER_SNIFFER_BYTE = 5
 HASSEB_DRIVER_SNIFFER_BYTE_ERROR = 6
 
 HASSEB_DEVICE_NONE = None
-HASSEB_DEVICE_USB = 1
-HASSEB_DEVICE_ETH = 2
+HASSEB_DEVICE_USB_NXP = 1
+HASSEB_DEVICE_USB_STM = 2
+HASSEB_DEVICE_ETH = 3
 
 
 class HassebDALIUSBNoDataAvailable(object):
@@ -82,48 +83,26 @@ class HassebDALIDriver(DALIDriver):
     _pending = None
     _response_message = None
 
-    # def __init__(self):
-    #     # Try to find an USB device first
-    #     try:
-    #         self.device = hid.Device(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
-    #         self.device_found = HASSEB_DEVICE_USB
-    #     except:
-    #         try:
-    #             self.device = hid.device()
-    #             self.device.open(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
-    #             self.device_found = HASSEB_DEVICE_USB
-    #         except:
-    #             try:
-    #                 self.device = hid.Device(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
-    #                 self.device_found = HASSEB_DEVICE_USB
-    #             except:
-    #                 try:
-    #                     self.device = hid.device()
-    #                     self.device.open(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
-    #                     self.device_found = HASSEB_DEVICE_USB
-    #                 except:
-    #                     self.device_found = HASSEB_DEVICE_NONE
-
     def connectDevice(self, ip_address=None):
         # If no IP address is given, try to find an USB device first
         if ip_address is None:
             try:
                 self.device = hid.Device(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
-                self.device_found = HASSEB_DEVICE_USB
+                self.device_found = HASSEB_DEVICE_USB_NXP
             except:
                 try:
                     self.device = hid.device()
                     self.device.open(NXP_USB_VENDOR, HASSEB_USB_DALI_PRODUCT)
-                    self.device_found = HASSEB_DEVICE_USB
+                    self.device_found = HASSEB_DEVICE_USB_NXP
                 except:
                     try:
                         self.device = hid.Device(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
-                        self.device_found = HASSEB_DEVICE_USB
+                        self.device_found = HASSEB_DEVICE_USB_STM
                     except:
                         try:
                             self.device = hid.device()
                             self.device.open(ST_USB_VENDOR, HASSEB_ETH_DALI_PRODUCT)
-                            self.device_found = HASSEB_DEVICE_USB
+                            self.device_found = HASSEB_DEVICE_USB_STM
                         except:
                             self.device_found = HASSEB_DEVICE_NONE
         # If an IP address is given, try to find an Ethernet device
@@ -201,17 +180,17 @@ class HassebDALIDriver(DALIDriver):
         if command.response is not None:
             self._pending = command
             self._response_message = None
-            self.device.write(data)
+            self.sendData(data)
             self.wait_for_response()
             return command.response(self.extract(self._response_message))
         else:
             self._pending = None
-            self.device.write(data)
+            self.sendData(data)
             return
 
     def receive(self):
         try:
-            data = self.device.read(10)
+            data = self.receiveData()
         except:
             return -1
 
@@ -251,7 +230,7 @@ class HassebDALIDriver(DALIDriver):
             self.sn = 1
         data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_CONFIGURE_DEVICE,
                             self.sn, 0x01, 0, 0, 0, 0, 0, 0)
-        self.device.write(data)
+        self.sendData(data)
 
     def disableSniffing(self):
         self.sn = self.sn + 1
@@ -259,16 +238,16 @@ class HassebDALIDriver(DALIDriver):
             self.sn = 1
         data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_CONFIGURE_DEVICE,
                             self.sn, 0, 0, 0, 0, 0, 0, 0)
-        self.device.write(data)
+        self.sendData(data)
 
     def receiveData(self):
-        if self.device_found == HASSEB_DEVICE_USB:
+        if self.device_found == HASSEB_DEVICE_USB_NXP or self.device_found == HASSEB_DEVICE_USB_STM:
             return self.device.read(10)
         elif self.device_found == HASSEB_DEVICE_ETH:
             return self.device.receive(10)
 
     def sendData(self, data):
-        if self.device_found == HASSEB_DEVICE_USB:
+        if self.device_found == HASSEB_DEVICE_USB_NXP or self.device_found == HASSEB_DEVICE_USB_STM:
             self.device.write(data)
         elif self.device_found == HASSEB_DEVICE_ETH:
             self.device.send(data)
@@ -317,7 +296,7 @@ class Device(object):
         if not isinstance(address, int) or address < 0 or address > 63:
             raise ValueError("address must be an integer in the range 0..63")
         self.address = address
-        self.address_obj = Short(address)
+        self.address_obj = address.GearShort(address)
         self.bus = None
         if bus:
             self.bind(bus)
@@ -365,16 +344,16 @@ class Bus(object):
         for sa in range(64):
             if sa in self._devices:
                 continue
-            response = i.send(QueryControlGearPresent(address.Short(sa)))
+            response = i.send(gear.QueryControlGearPresent(address.Short(sa)))
             if response.value:
                 Device(address=sa, bus=self)
         self._bus_scanned = True
 
     def set_search_addr(self, addr):
         i = self.get_interface()
-        i.send(SetSearchAddrH((addr >> 16) & 0xff))
-        i.send(SetSearchAddrM((addr >> 8) & 0xff))
-        i.send(SetSearchAddrL(addr & 0xff))
+        i.send(gear.SetSearchAddrH((addr >> 16) & 0xff))
+        i.send(gear.SetSearchAddrM((addr >> 8) & 0xff))
+        i.send(gear.SetSearchAddrL(addr & 0xff))
 
     def find_next(self, low, high):
         """Find the ballast with the lowest random address.  The caller
@@ -394,7 +373,7 @@ class Bus(object):
             if response.value is True:
                 return low
             return None
-        response = i.send(Compare())
+        response = i.send(gear.Compare())
         if response.value is True:
             midpoint = (low + high) // 2
             return self.find_next(low, midpoint) \
@@ -406,9 +385,9 @@ class Bus(object):
         """
         addrs = self.unused_addresses()
         i = self.get_interface()
-        i.send(Terminate())
-        i.send(Initialise(broadcast=broadcast, address=None))
-        i.send(Randomise())
+        i.send(gear.Terminate())
+        i.send(gear.Initialise(broadcast=broadcast, address=None))
+        i.send(gear.Randomise())
         # Randomise may take up to 100ms
         time.sleep(0.1)
         low = 0
@@ -418,17 +397,17 @@ class Bus(object):
             if low is not None:
                 if addrs:
                     new_addr = addrs.pop(0)
-                    i.send(ProgramShortAddress(new_addr))
-                    r = i.send(VerifyShortAddress(new_addr))
+                    i.send(gear.ProgramShortAddress(new_addr))
+                    r = i.send(gear.VerifyShortAddress(new_addr))
                     if r.value is not True:
                         print(f"Error in programming short address {new_addr}")
                     i.send(gear.Withdraw())
                     Device(address=new_addr, randomAddress=low, bus=self)
                 else:
-                    i.send(Terminate())
+                    i.send(gear.Terminate())
                     print("No free address")
                 low = low + 1
-        i.send(Terminate())
+        i.send(gear.Terminate())
 
     def assign_short_addresses(self):
         """Search for devices on the bus with no short address allocated, and

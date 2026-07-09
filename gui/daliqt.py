@@ -21,7 +21,7 @@ DALI_command_sender = DALICommands.DALICommandSender(DALI_device)
 
 # Circular buffer for received DALI messages
 DALI_BUFFER_LENGTH = 8
-dali_rec_buffer = [0 for i in range(DALI_BUFFER_LENGTH)]
+dali_rec_buffer = [[0 for _ in range(hasseb.HASSEB_DATA_LENGTH)] for _ in range(DALI_BUFFER_LENGTH)]
 dali_message_received = [float('inf') for i in range(DALI_BUFFER_LENGTH)]
 dali_message_type = [None for i in range(DALI_BUFFER_LENGTH)]
 dali_rec_buffer_write_idx = 0
@@ -286,9 +286,8 @@ class tabsWidget(QWidget):
             self.parent.DALIThread = DALIThread(self.parent.updateRecMsg)
             self.parent.threadpool.start(self.parent.DALIThread)
         else:
-            self.label = QLabel(self)
-            self.label.setText('<span style="color:red">No USB DALI master device found. Please check the connection and restart program.</span>')
-            self.statusBar().addPermanentWidget(self.label)
+            self.parent.statusBar().showMessage("No USB DALI master device found. Please check the connection and restart program.")
+            self.parent.statusBar().setStyleSheet("color: red;")
 
     def sendCommandDialog(self):
         sendDlg = QDialog(self)

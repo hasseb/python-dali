@@ -37,6 +37,8 @@ HASSEB_DEVICE_USB_NXP = 1
 HASSEB_DEVICE_USB_STM = 2
 HASSEB_DEVICE_ETH = 3
 
+HASSEB_DATA_LENGTH = 10
+
 
 class HassebDALIUSBNoDataAvailable(object):
     def __repr__(self):
@@ -77,9 +79,12 @@ class HassebDALIDriver(DALIDriver):
     """``DALIDriver`` implementation for Hasseb DALI USB device.
     """
     device_found = HASSEB_DEVICE_NONE
+    device = None
+    udp_server = None
     logger = logging.getLogger('HassebDALIDriver')
     sn = 0
     send_message = None
+    server_ip = None
     _pending = None
     _response_message = None
 
@@ -107,11 +112,19 @@ class HassebDALIDriver(DALIDriver):
                             self.device_found = HASSEB_DEVICE_NONE
         # If an IP address is given, try to find an Ethernet device
         else:
-            # Open TCP connection to the Hasseb DALI Ethernet device
-            self.device = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.device.settimeout(1)
-            self.device.connect((ip_address, 59000))
+            # Save the IP address and set the device type to Ethernet
             self.device_found = HASSEB_DEVICE_ETH
+            self.server_ip = ip_address
+
+            # Create a UDP socket to send data to the Ethernet device
+            self.device = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.device.settimeout(0.2)
+            self.device.connect((self.server_ip, 59000))
+
+            # Create UDP server to listen for incoming connections from the Ethernet device
+            self.udp_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.udp_server.settimeout(1)
+            self.udp_server.bind(('0.0.0.0', 59001))
 
     def wait_for_response(self):
         raise NotImplementedError()
@@ -192,11 +205,15 @@ class HassebDALIDriver(DALIDriver):
         try:
             data = self.receiveData()
         except:
-            return -1
+            return None
+
+        # Check if the received data is valid and extract the frame
+        if data is None or len(data) != HASSEB_DATA_LENGTH:
+            return None
 
         frame = self.extract(data)
         if isinstance(frame, HassebDALIUSBNoDataAvailable):
-            return
+            return None
         elif isinstance(frame, BackwardFrame) or isinstance(frame, HassebDALIUSBNoAnswer):
             if self._pending and isinstance(frame, BackwardFrame):
                 self._response_message = data
@@ -213,11 +230,13 @@ class HassebDALIDriver(DALIDriver):
         data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_READ_FIRMWARE_VERSION,
                             self.sn, 0, 0, 0, 0, 0, 0, 0)
         self.sendData(data)
+        time.sleep(0.1)
         data = self.receiveData()
         for i in range(0,100):
-            if len(data)==10:
+            if data is not None and len(data) == HASSEB_DATA_LENGTH:
                 if data[1] != HASSEB_READ_FIRMWARE_VERSION:
                     data = self.receiveData()
+                    time.sleep(0.01)
                 else:
                     return f"{data[3]}.{data[4]}"
             else:
@@ -242,15 +261,23 @@ class HassebDALIDriver(DALIDriver):
 
     def receiveData(self):
         if self.device_found == HASSEB_DEVICE_USB_NXP or self.device_found == HASSEB_DEVICE_USB_STM:
-            return self.device.read(10)
+            return self.device.read(HASSEB_DATA_LENGTH)
         elif self.device_found == HASSEB_DEVICE_ETH:
-            return self.device.receive(10)
+            try:
+                data, addr = self.udp_server.recvfrom(HASSEB_DATA_LENGTH)
+            except Exception as e:
+                return None
+            return data
 
     def sendData(self, data):
         if self.device_found == HASSEB_DEVICE_USB_NXP or self.device_found == HASSEB_DEVICE_USB_STM:
             self.device.write(data)
         elif self.device_found == HASSEB_DEVICE_ETH:
-            self.device.send(data)
+            try:
+                self.device.send(data)
+            except Exception as e:
+                self.device_found = HASSEB_DEVICE_NONE
+                self.logger.error(f"Error sending data to device: {e}")
 
 
 class AsyncHassebDALIDriver(HassebDALIDriver, AsyncDALIDriver):
@@ -381,7 +408,6 @@ class Bus(object):
 
     def search_bus(self, broadcast=False):
         """ Initialize bus with broadcast on or off and find the devices from the bus
-
         """
         addrs = self.unused_addresses()
         i = self.get_interface()

@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import QApplication
 
+import ipaddress
 import time
 import hasseb
 from dali import address
@@ -29,6 +30,40 @@ MESSAGE_TYPE_DALI_PC = 0
 MESSAGE_TYPE_PC_DALI = 1
 start_time = time.monotonic()
 
+# Mutex to prevent reading from the DALI device from run task and event handler at the same time
+ethernet_send_mutex = QMutex()
+def ethernet_lock():
+    ethernet_send_mutex.lock()
+def ethernet_unlock():
+    ethernet_send_mutex.unlock()
+
+
+class ConnectWorker(QObject):
+    """Run potentially blocking connect operations outside the UI thread."""
+
+    finished = pyqtSignal(bool, str, str)
+
+    def __init__(self, use_usb=True, ip_address=None):
+        super(ConnectWorker, self).__init__()
+        self.use_usb = use_usb
+        self.ip_address = ip_address
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            if self.use_usb:
+                DALI_device.connectDevice()
+            else:
+                DALI_device.connectDevice(self.ip_address)
+
+            if DALI_device.device_found is not None:
+                fw = DALI_device.readFirmwareVersion()
+                self.finished.emit(True, fw, "")
+            else:
+                self.finished.emit(False, "", "No USB DALI master device found. Please check the connection and restart program.")
+        except Exception as err:
+            self.finished.emit(False, "", str(err))
+
 class DALIThread(QRunnable):
     '''
     DALI messages are handled  here in a separate thread
@@ -46,6 +81,7 @@ class DALIThread(QRunnable):
         global dali_message_received
         global dali_rec_buffer_write_idx
         while 1:
+            time.sleep(0.005)
             data = DALI_device.receive()
             if data is not None:
                 dali_rec_buffer[dali_rec_buffer_write_idx] = data
@@ -69,7 +105,7 @@ class DALIThread(QRunnable):
                     dali_rec_buffer_write_idx = 0
                 self.signal.emit()
                 DALI_device.send_message = None
-
+            
 class mainWindow(QMainWindow):
     # Signal handling received DALI messages, receiving made in separate thread
     updateRecMsg = pyqtSignal()
@@ -96,6 +132,10 @@ class tabsWidget(QWidget):
         super(QWidget, self).__init__(parent)
         self.parent = parent
         self.layout = QHBoxLayout(self)
+        self._connect_thread = None
+        self._connect_worker = None
+        self._log_connected = False
+        self._receiver_started = False
 
         # Initialize tab screen
         self.tabs = QTabWidget()
@@ -270,24 +310,66 @@ class tabsWidget(QWidget):
 
     @pyqtSlot()
     def connectButtonClick(self):
-        # Connect to the DALI device via USB or IP
-        if self.tab1.connectionUSB.isChecked():
-            DALI_device.connectDevice()
-        elif self.tab1.connectionIP.isChecked():
-            ip_address = self.tab1.ipAddress.text()
-            DALI_device.connectDevice(ip_address)
+        if self._connect_thread is not None and self._connect_thread.isRunning():
+            return
 
-        # Update status bar message
-        if DALI_device.device_found != None:
-            self.parent.statusBar().showMessage(f"hasseb DALI device with firmware version {DALI_device.readFirmwareVersion()} found.")
+        # Set the ethernet mutex for the hasseb driver
+        DALI_device.setEthernetMutex(ethernet_lock, ethernet_unlock)
+
+        # Check if IP address is valid if IP connection is selected
+        if self.tab1.connectionIP.isChecked():
+            ip_address = self.tab1.ipAddress.text()
+            try:
+                ipaddress.ip_address(ip_address)
+                self.parent.statusBar().setStyleSheet("color: black;")
+            except ValueError:
+                self.parent.statusBar().showMessage("Invalid IP address. Please enter a valid IP address.")
+                self.parent.statusBar().setStyleSheet("color: red;")
+                return
+
+        self.tab1.connectButton.setEnabled(False)
+        self.parent.statusBar().setStyleSheet("color: black;")
+        self.parent.statusBar().showMessage("Connecting to DALI device...")
+
+        use_usb = self.tab1.connectionUSB.isChecked()
+        ip_address = self.tab1.ipAddress.text() if self.tab1.connectionIP.isChecked() else None
+        self._connect_thread = QThread(self)
+        self._connect_worker = ConnectWorker(use_usb=use_usb, ip_address=ip_address)
+        self._connect_worker.moveToThread(self._connect_thread)
+        self._connect_thread.started.connect(self._connect_worker.run)
+        self._connect_worker.finished.connect(self.onConnectFinished)
+        self._connect_worker.finished.connect(self._connect_thread.quit)
+        self._connect_worker.finished.connect(self._connect_worker.deleteLater)
+        self._connect_thread.finished.connect(self._connect_thread.deleteLater)
+        self._connect_thread.finished.connect(self.onConnectThreadFinished)
+        self._connect_thread.start()
+
+    @pyqtSlot(bool, str, str)
+    def onConnectFinished(self, ok, firmware, error_text):
+        self.tab1.connectButton.setEnabled(True)
+        if ok:
+            self.parent.statusBar().setStyleSheet("color: black;")
+            self.parent.statusBar().showMessage(f"hasseb DALI device with firmware version {firmware} found.")
             self.updateDeviceList()
-            self.parent.updateRecMsg.connect(self.parent.tabs_widget.writeDALILog)
-            self.parent.threadpool = QThreadPool()
-            self.parent.DALIThread = DALIThread(self.parent.updateRecMsg)
-            self.parent.threadpool.start(self.parent.DALIThread)
+            if not self._log_connected:
+                self.parent.updateRecMsg.connect(self.parent.tabs_widget.writeDALILog)
+                self._log_connected = True
+            if not self._receiver_started:
+                self.parent.threadpool = QThreadPool()
+                self.parent.DALIThread = DALIThread(self.parent.updateRecMsg)
+                self.parent.threadpool.start(self.parent.DALIThread)
+                self._receiver_started = True
         else:
-            self.parent.statusBar().showMessage("No USB DALI master device found. Please check the connection and restart program.")
             self.parent.statusBar().setStyleSheet("color: red;")
+            if error_text:
+                self.parent.statusBar().showMessage(f"Connect failed: {error_text}")
+            else:
+                self.parent.statusBar().showMessage("No USB DALI master device found. Please check the connection and restart program.")
+
+    @pyqtSlot()
+    def onConnectThreadFinished(self):
+        self._connect_thread = None
+        self._connect_worker = None
 
     def sendCommandDialog(self):
         sendDlg = QDialog(self)
@@ -369,11 +451,11 @@ class tabsWidget(QWidget):
 
     def updateDeviceList(self):
         self.tab1.treeWidget.clear()
-        for i in range(len(DALI_bus._devices)):
-            l1 = QTreeWidgetItem([ f"{DALI_bus._devices[i].address}",
-                                   f"{DALI_bus._devices[i].randomAddress}",
-                                   f"{DALI_bus._devices[i].groups}",
-                                   f"{DALI_bus._devices[i].deviceType}" ])
+        for _, device in sorted(DALI_bus._devices.items()):
+            l1 = QTreeWidgetItem([ f"{device.address}",
+                                   f"{device.randomAddress}",
+                                   f"{device.groups}",
+                                   f"{device.deviceType}" ])
             self.tab1.treeWidget.addTopLevelItem(l1)
         for i in range(4):
             self.tab1.treeWidget.resizeColumnToContents(i)

@@ -106,12 +106,12 @@ class Bus(object):
 
         """
         addrs = self.unused_addresses()
-        i = self.get_interface()
-        i.send(gear.Terminate())
-        i.send(gear.Initialise(broadcast=broadcast, address=None))
-        i.send(gear.Randomise())
+        interface = self.get_interface()
+        interface.send(gear.Terminate())
+        interface.send(gear.Initialise(broadcast=broadcast, address=None))
+        interface.send(gear.Randomise())
         # Randomise may take up to 100ms
-        time.sleep(0.1)
+        time.sleep(0.15)
         low = 0
         high = 0xffffff
         while low is not None:
@@ -119,17 +119,17 @@ class Bus(object):
             if low is not None:
                 if addrs:
                     new_addr = addrs.pop(0)
-                    i.send(gear.ProgramShortAddress(new_addr))
-                    r = i.send(gear.VerifyShortAddress(new_addr))
+                    interface.send(gear.ProgramShortAddress(new_addr))
+                    r = interface.send(gear.VerifyShortAddress(new_addr))
                     if r.value is not True:
                         print(f"Error in programming short address {new_addr}")
-                    i.send(gear.Withdraw())
+                    interface.send(gear.Withdraw())
                     Device(address=new_addr, randomAddress=low, bus=self)
                 else:
-                    i.send(gear.Terminate())
+                    interface.send(gear.Terminate())
                     print("No free address")
                 low = low + 1
-        i.send(gear.Terminate())
+        interface.send(gear.Terminate())
 
     def assign_short_addresses(self):
         """Search for devices on the bus with no short address allocated, and

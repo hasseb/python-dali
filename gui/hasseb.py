@@ -23,6 +23,7 @@ HASSEB_ETH_DALI_PRODUCT = 2051
 HASSEB_READ_FIRMWARE_VERSION    = 0x02
 HASSEB_CONFIGURE_DEVICE         = 0x05
 HASSEB_DALI_FRAME               = 0x07
+HASSEB_POLL_RESPONSE            = 0x08
 
 HASSEB_DRIVER_NO_DATA_AVAILABLE = 0
 HASSEB_DRIVER_NO_ANSWER = 1
@@ -80,7 +81,6 @@ class HassebDALIDriver(DALIDriver):
     """
     device_found = HASSEB_DEVICE_NONE
     device = None
-    udp_server = None
     logger = logging.getLogger('HassebDALIDriver')
     sn = 0
     send_message = None
@@ -116,15 +116,6 @@ class HassebDALIDriver(DALIDriver):
             self.device_found = HASSEB_DEVICE_ETH
             self.server_ip = ip_address
 
-            # Create a UDP socket to send data to the Ethernet device
-            self.device = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.device.settimeout(0.2)
-            self.device.connect((self.server_ip, 59000))
-
-            # Create UDP server to listen for incoming connections from the Ethernet device
-            self.udp_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.udp_server.settimeout(1)
-            self.udp_server.bind(('0.0.0.0', 59001))
 
     def wait_for_response(self):
         raise NotImplementedError()
@@ -232,7 +223,7 @@ class HassebDALIDriver(DALIDriver):
         self.sendData(data)
         time.sleep(0.1)
         data = self.receiveData()
-        for i in range(0,100):
+        for i in range(0,5):
             if data is not None and len(data) == HASSEB_DATA_LENGTH:
                 if data[1] != HASSEB_READ_FIRMWARE_VERSION:
                     data = self.receiveData()
@@ -263,21 +254,42 @@ class HassebDALIDriver(DALIDriver):
         if self.device_found == HASSEB_DEVICE_USB_NXP or self.device_found == HASSEB_DEVICE_USB_STM:
             return self.device.read(HASSEB_DATA_LENGTH)
         elif self.device_found == HASSEB_DEVICE_ETH:
+            self._lockEthernet()
             try:
-                data, addr = self.udp_server.recvfrom(HASSEB_DATA_LENGTH)
+                data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_POLL_RESPONSE,
+                                   0, 0, 0, 0, 0, 0, 0, 0)
+                self.device = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.device.settimeout(0.2)
+                self.device.connect((self.server_ip, 59000))
+                self.device.send(data)
+                data = self.device.recv(HASSEB_DATA_LENGTH)
             except Exception as e:
+                self.device.close()
+                self._unlockEthernet()
                 return None
+            finally:
+                self.device.close()
+                self._unlockEthernet()
             return data
 
     def sendData(self, data):
         if self.device_found == HASSEB_DEVICE_USB_NXP or self.device_found == HASSEB_DEVICE_USB_STM:
             self.device.write(data)
         elif self.device_found == HASSEB_DEVICE_ETH:
+            self._lockEthernet()
             try:
+                self.device = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.device.settimeout(0.2)
+                self.device.connect((self.server_ip, 59000))
                 self.device.send(data)
             except Exception as e:
-                self.device_found = HASSEB_DEVICE_NONE
                 self.logger.error(f"Error sending data to device: {e}")
+            self.device.close()
+            self._unlockEthernet()
+
+    def setEthernetMutex(self, lock, unlock):
+        self._lockEthernet = lock
+        self._unlockEthernet = unlock
 
 
 class AsyncHassebDALIDriver(HassebDALIDriver, AsyncDALIDriver):

@@ -245,9 +245,6 @@ class AsyncHassebDALIUSBDriver(HassebDALIUSBDriver, AsyncDALIDriver):
        is called when wating for a response to prevent hangin of the program.
     """
 
-    #def __init__(self, processEvents):
-    #    self._processEvents = processEvents
-
     def setEventHandler(self, processEvents):
         self._processEvents = processEvents
 

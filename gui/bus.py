@@ -38,9 +38,8 @@ class Bus(object):
         self._interface = interface
 
     def get_interface(self):
-        if not self._interface:
-            raise NotConnected()
-        return self._interface
+        if self._interface:
+            return self._interface
 
     def add_device(self, device):
         if device.bus and device.bus != self:

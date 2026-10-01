@@ -186,6 +186,10 @@ class tabsWidget(QWidget):
         self.tab1.sniffEnableButton.clicked.connect(self.sniffEnableButtonClick)
         self.tab1.sniffDisableButton = QPushButton('Disable sniffing')
         self.tab1.sniffDisableButton.clicked.connect(self.sniffDisableButtonClick)
+        self.tab1.enableBusPowerButton = QPushButton('Enable bus power')
+        self.tab1.enableBusPowerButton.clicked.connect(self.enableBusPowerButtonClick)
+        self.tab1.disableBusPowerButton = QPushButton('Disable bus power')
+        self.tab1.disableBusPowerButton.clicked.connect(self.disableBusPowerButtonClick)
         # Set maximum width for controls
         controls_width = 180
         self.tab1.connectionGroupBox.setMaximumWidth(controls_width)
@@ -193,6 +197,7 @@ class tabsWidget(QWidget):
         self.tab1.scanButton.setMaximumWidth(controls_width)
         self.tab1.sniffEnableButton.setMaximumWidth(controls_width)
         self.tab1.sniffDisableButton.setMaximumWidth(controls_width)
+        self.tab1.disableBusPowerButton.setMaximumWidth(controls_width)
         # TreeWidget
         self.tab1.treeWidget = QTreeWidget(self)
         self.tab1.treeWidget.setColumnCount(4)
@@ -359,6 +364,10 @@ class tabsWidget(QWidget):
                 self.parent.DALIThread = DALIThread(self.parent.updateRecMsg)
                 self.parent.threadpool.start(self.parent.DALIThread)
                 self._receiver_started = True
+            # Enable the bus power disable and enable buttons if firmware version is 1.4 or higher
+            if firmware >= "3.0":
+                self.tab1.layout_controls.addWidget(self.tab1.disableBusPowerButton)
+                self.tab1.layout_controls.addWidget(self.tab1.enableBusPowerButton)
         else:
             self.parent.statusBar().setStyleSheet("color: red;")
             if error_text:
@@ -490,6 +499,18 @@ class tabsWidget(QWidget):
     def sniffDisableButtonClick(self):
         DALI_device.disableSniffing()
         self.parent.statusBar().showMessage("Sniffing disabled")
+
+
+    @pyqtSlot()
+    def enableBusPowerButtonClick(self):
+        DALI_device.enableBusPower()
+        self.parent.statusBar().showMessage("Bus power enabled")
+
+
+    @pyqtSlot()
+    def disableBusPowerButtonClick(self):
+        DALI_device.disableBusPower()
+        self.parent.statusBar().showMessage("Bus power disabled")
 
 
     @pyqtSlot()

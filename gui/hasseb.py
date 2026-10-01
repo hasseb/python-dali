@@ -38,6 +38,11 @@ HASSEB_DEVICE_USB_NXP = 1
 HASSEB_DEVICE_USB_STM = 2
 HASSEB_DEVICE_ETH = 3
 
+HASSEB_DISABLE_SNIFFING = 0
+HASSEB_ENABLE_SNIFFING = 1
+HASSEB_DISABLE_BUS_POWER = 2
+HASSEB_ENABLE_BUS_POWER = 3
+
 HASSEB_DATA_LENGTH = 10
 
 
@@ -149,7 +154,6 @@ class HassebDALIDriver(DALIDriver):
             return None
         elif data[1] == HASSEB_DRIVER_NO_DATA_AVAILABLE:
             # 0: "No Data Available"
-            self.logger.debug("No Data Available")
             return HassebDALIUSBNoDataAvailable()
         elif data[1] == HASSEB_DALI_FRAME:
             response_status = data[3]
@@ -223,7 +227,7 @@ class HassebDALIDriver(DALIDriver):
         self.sendData(data)
         time.sleep(0.1)
         data = self.receiveData()
-        for i in range(0,5):
+        for i in range(0,10):
             if data is not None and len(data) == HASSEB_DATA_LENGTH:
                 if data[1] != HASSEB_READ_FIRMWARE_VERSION:
                     data = self.receiveData()
@@ -239,7 +243,7 @@ class HassebDALIDriver(DALIDriver):
         if self.sn > 255:
             self.sn = 1
         data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_CONFIGURE_DEVICE,
-                            self.sn, 0x01, 0, 0, 0, 0, 0, 0)
+                            self.sn, HASSEB_ENABLE_SNIFFING, 0, 0, 0, 0, 0, 0)
         self.sendData(data)
 
     def disableSniffing(self):
@@ -247,7 +251,23 @@ class HassebDALIDriver(DALIDriver):
         if self.sn > 255:
             self.sn = 1
         data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_CONFIGURE_DEVICE,
-                            self.sn, 0, 0, 0, 0, 0, 0, 0)
+                            self.sn, HASSEB_DISABLE_SNIFFING, 0, 0, 0, 0, 0, 0)
+        self.sendData(data)
+
+    def enableBusPower(self):
+        self.sn = self.sn + 1
+        if self.sn > 255:
+            self.sn = 1
+        data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_CONFIGURE_DEVICE,
+                            self.sn, HASSEB_ENABLE_BUS_POWER, 0, 0, 0, 0, 0, 0)
+        self.sendData(data)
+
+    def disableBusPower(self):
+        self.sn = self.sn + 1
+        if self.sn > 255:
+            self.sn = 1
+        data = struct.pack('BBBBBBBBBB', 0xAA, HASSEB_CONFIGURE_DEVICE,
+                            self.sn, HASSEB_DISABLE_BUS_POWER, 0, 0, 0, 0, 0, 0)
         self.sendData(data)
 
     def receiveData(self):
@@ -264,9 +284,8 @@ class HassebDALIDriver(DALIDriver):
                 self.device.send(data)
                 data = self.device.recv(HASSEB_DATA_LENGTH)
             except Exception as e:
-                self.device.close()
-                self._unlockEthernet()
-                return None
+                data = None
+                self.logger.error(f"Error receiving data from device: {e}")
             finally:
                 self.device.close()
                 self._unlockEthernet()
@@ -276,16 +295,24 @@ class HassebDALIDriver(DALIDriver):
         if self.device_found == HASSEB_DEVICE_USB_NXP or self.device_found == HASSEB_DEVICE_USB_STM:
             self.device.write(data)
         elif self.device_found == HASSEB_DEVICE_ETH:
-            self._lockEthernet()
-            try:
-                self.device = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.device.settimeout(0.2)
-                self.device.connect((self.server_ip, 59000))
-                self.device.send(data)
-            except Exception as e:
-                self.logger.error(f"Error sending data to device: {e}")
-            self.device.close()
-            self._unlockEthernet()
+            success = False
+            tries = 10
+            while not success and tries > 0:
+                try:
+                    self._lockEthernet()
+                    self.device = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    self.device.settimeout(0.2)
+                    self.device.connect((self.server_ip, 59000))
+                    self.device.send(data)
+                except Exception as e:
+                    self.logger.error(f"Error sending data to device: {e}")
+                    time.sleep(0.1)
+                    tries -= 1
+                else:
+                    success = True
+                finally:
+                    self.device.close()
+                    self._unlockEthernet()
 
     def setEthernetMutex(self, lock, unlock):
         self._lockEthernet = lock

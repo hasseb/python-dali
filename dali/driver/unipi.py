@@ -8,10 +8,15 @@
 import logging
 from time import sleep
 
-from pymodbus.client.sync import (
-    ModbusSerialClient as pySerial,
-    ModbusTcpClient as pyRtu,
-)
+import pymodbus
+from packaging import version
+
+PYMODBUS_VERSION = version.parse(pymodbus.__version__)
+
+if PYMODBUS_VERSION >= version.parse("3.0.0"):
+    from pymodbus.client import ModbusSerialClient, ModbusTcpClient
+else:
+    from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
 
 from dali.driver.base import DALIDriver, SyncDALIDriver
 from dali.frame import BackwardFrame, ForwardFrame
@@ -40,11 +45,16 @@ class RemoteArm:
 
     def __init__(self, host, unit=1, baud=19200, timeout=1):
         if host.startswith("/"):
-            self.pymc = pySerial(
-                method="rtu", port=host, baudrate=baud, timeout=timeout
-            )
+            if PYMODBUS_VERSION >= version.parse("3.0.0"):
+                self.pymc = ModbusSerialClient(
+                    port=host, baudrate=baud, timeout=timeout
+                )
+            else:
+                self.pymc = ModbusSerialClient(
+                    method="rtu", port=host, baudrate=baud, timeout=timeout
+                )
         else:
-            self.pymc = pyRtu(host=host, port=502)
+            self.pymc = ModbusTcpClient(host=host, port=502)
         self.unit = unit
 
     def close(self):

@@ -4,7 +4,15 @@ try:
 except ImportError:
     import mock
 
-from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
+import pymodbus
+from packaging import version
+
+PYMODBUS_VERSION = version.parse(pymodbus.__version__)
+
+if PYMODBUS_VERSION >= version.parse("3.0.0"):
+    from pymodbus.client import ModbusSerialClient, ModbusTcpClient
+else:
+    from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
 
 from dali.address import Short
 from dali.command import Command
@@ -19,8 +27,8 @@ from dali.gear.general import DAPC, Reset
 
 
 class TestRemoteArm(unittest.TestCase):
-    @mock.patch("dali.driver.unipi.pyRtu")
-    @mock.patch("dali.driver.unipi.pySerial")
+    @mock.patch("dali.driver.unipi.ModbusTcpClient")
+    @mock.patch("dali.driver.unipi.ModbusSerialClient")
     def setUp(self, mock_tcp, mock_rtu):
         mock_tcp.return_value = mock.MagicMock(spec=ModbusTcpClient)
         mock_rtu.return_value = mock.MagicMock(spec=ModbusSerialClient)

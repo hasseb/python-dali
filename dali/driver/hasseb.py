@@ -145,7 +145,6 @@ class HassebDALIUSBDriver(DALIDriver):
             return None
         elif data[1] == HASSEB_DRIVER_NO_DATA_AVAILABLE:
             # 0: "No Data Available"
-            self.logger.debug("No Data Available")
             return HassebDALIUSBNoDataAvailable()
         elif data[1] == HASSEB_DALI_FRAME:
             response_status = data[3]

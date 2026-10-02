@@ -5,8 +5,10 @@ from PyQt5 import QtGui
 from PyQt5.QtGui import QIcon
 
 from daliqt import mainWindow
+import logging
 
 if __name__ == '__main__':
+    #logging.basicConfig(level=logging.DEBUG)
     app = QApplication([])
     GUI = mainWindow(app)
     app.setWindowIcon(QtGui.QIcon('hasseb_icon.ico'))

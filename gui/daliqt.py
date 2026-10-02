@@ -112,7 +112,7 @@ class mainWindow(QMainWindow):
 
     def __init__(self, app):
         super(mainWindow, self).__init__()
-        self.title = 'DALI2Controller 1.4'
+        self.title = 'DALI2Controller 2.0'
         screen_resolution = app.desktop().screenGeometry()
         self.width, self.height = screen_resolution.width()/2, screen_resolution.height()/2
         self.left = screen_resolution.width()/2-self.width/2
